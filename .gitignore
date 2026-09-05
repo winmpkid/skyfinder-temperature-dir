@@ -1,0 +1,28 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+.matplotlib/
+
+# SkyFinder is distributed separately by its authors.
+datasets/*
+!datasets/.gitkeep
+
+# Generated locally from the separately downloaded dataset.
+data/*
+!data/.gitkeep
+
+# Model weights are large and must be generated locally.
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Per-image predictions include local image paths; aggregate outputs are tracked.
+results/*_predictions.csv
+
+# The PDF is the public report; the editable Word file is a local build artifact.
+reports/*.docx
+
+# Local render and verification artifacts.
+tmp/

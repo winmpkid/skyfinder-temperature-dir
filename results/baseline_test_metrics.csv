@@ -1,0 +1,2 @@
+split,checkpoint_epoch,num_samples,mae,rmse
+test,11,395,4.921548749034918,6.293136855811025

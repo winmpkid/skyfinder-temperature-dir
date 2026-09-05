@@ -1,0 +1,4 @@
+model,val_mae_c,val_rmse_c,test_mae_c,test_rmse_c
+Training-median baseline,10.226,11.010,5.945,7.803
+ResNet-18 baseline,2.677,3.459,4.922,6.293
+ResNet-18 with LDS,2.610,3.312,6.315,7.551
