@@ -1,21 +1,73 @@
 # SkyFinder Temperature Prediction with Deep Imbalanced Regression
 
-This project adapts **Label Distribution Smoothing (LDS)** from *Delving into
-Deep Imbalanced Regression* to predict ambient temperature from SkyFinder
-images. It compares the same ResNet-18 regressor trained with ordinary L1 loss
-and LDS-weighted L1 loss.
+An independent take-home experiment adapting **Label Distribution Smoothing
+(LDS)** from *Delving into Deep Imbalanced Regression* to image-based ambient
+temperature prediction.
 
-The main result is deliberately mixed: LDS slightly improves validation error,
-but performs worse on the colder chronological test split. This highlights the
-difference between correcting label imbalance and handling temporal
-distribution shift.
+> **Main finding:** LDS reduced validation MAE from **2.677 °C to 2.610 °C**, but
+> test MAE increased from **4.922 °C to 6.315 °C**. Label imbalance mattered in
+> some temperature ranges, while temporal distribution shift was the larger
+> generalization problem in this subset.
 
-> This is an independent implementation of a public take-home exercise. It is
-> not an official UCLA or Health Intelligence Lab project.
+The concise two-page report is available at
+[`reports/SkyFinder_DIR_Brief_Report.pdf`](reports/SkyFinder_DIR_Brief_Report.pdf).
 
-## Results
+## Objective
 
-All errors are in degrees Celsius. The reported checkpoints were selected by
+This project predicts ambient temperature from SkyFinder images. It compares a
+standard ResNet-18 regressor with the same architecture trained using
+LDS-weighted loss, isolating the effect of label-distribution reweighting.
+
+## Method
+
+### Data
+
+Images from SkyFinder cameras **858, 3888, and 4795** were joined with weather
+metadata using camera ID and filename. Invalid temperatures and two truncated
+JPEG files were removed.
+
+Samples were split chronologically by capture date within each camera:
+
+- 1,777 training images
+- 375 validation images
+- 395 test images
+
+All images from the same date remain in the same split, reducing leakage from
+near-duplicate adjacent frames.
+
+### Model and training
+
+The model uses an ImageNet-pretrained ResNet-18 with its classification layer
+replaced by a one-output temperature-regression head. Images are resized to
+224 × 224 pixels and normalized with ImageNet statistics. Random horizontal
+flipping is applied only during training.
+
+Both experiments use:
+
+- AdamW optimizer
+- Learning rate `1e-4`
+- Weight decay `1e-4`
+- Batch size 32
+- 20 epochs
+- Random seed 42
+
+The baseline minimizes ordinary mean absolute error.
+
+### Label Distribution Smoothing
+
+For LDS, training temperatures are placed into 1 °C bins. Bin counts are
+smoothed with a Gaussian kernel of size 5 and sigma 2. Each sample receives a
+weight inversely proportional to the smoothed density of its temperature bin,
+and the weights are normalized to mean 1.
+
+The weighted absolute error is used only for optimization. Validation,
+checkpoint selection, and final evaluation use ordinary unweighted metrics.
+This repository implements LDS only; Feature Distribution Smoothing (FDS) and
+the official two-stage RRT procedure are not included.
+
+## Experimental results
+
+All errors are reported in degrees Celsius. Checkpoints were selected using
 unweighted validation MAE.
 
 | Model | Validation MAE | Validation RMSE | Test MAE | Test RMSE |
@@ -24,57 +76,47 @@ unweighted validation MAE.
 | ResNet-18 baseline | 2.677 | 3.459 | **4.922** | **6.293** |
 | ResNet-18 with LDS | **2.610** | **3.312** | 6.315 | 7.551 |
 
-LDS reduced validation MAE by 0.066 °C (2.5%), with its largest validation
-gains in the rare sub-zero ranges. Test MAE increased by 1.393 °C. The test
-images were substantially colder on average than the training images, and the
-LDS model showed a larger positive prediction bias. The experiment therefore
-does not support claiming a general improvement from LDS on this subset.
+On validation data, LDS improved MAE by **0.066 °C (2.5%)** and RMSE by
+**0.148 °C (4.3%)**. Its largest gains occurred below 0 °C:
+
+- −10 to −5 °C: MAE decreased from 4.175 °C to 3.558 °C
+- −5 to 0 °C: MAE decreased from 3.409 °C to 2.432 °C
 
 ![Baseline test temperature analysis](results/baseline_test_temperature_analysis.png)
 
-The complete aggregate metrics, temperature-bin tables, training histories,
-and plots are in [`results/`](results/). The concise experiment report is in
-[`reports/SkyFinder_DIR_Brief_Report.pdf`](reports/SkyFinder_DIR_Brief_Report.pdf).
+Aggregate metrics, temperature-bin tables, training histories, and analysis
+plots are stored in [`results/`](results/).
 
-## Method
+## Analysis
 
-- **Data:** 2,547 valid images from SkyFinder cameras 858, 3888, and 4795.
-- **Target:** `TempM` ambient temperature in degrees Celsius.
-- **Split:** per-camera chronological split by capture date: 1,777 train, 375
-  validation, and 395 test images. A date never appears in multiple splits.
-- **Model:** ImageNet-pretrained ResNet-18 with a one-output regression head.
-- **Training:** AdamW, learning rate `1e-4`, weight decay `1e-4`, batch size 32,
-  20 epochs, seed 42.
-- **LDS:** 1 °C label bins, Gaussian kernel size 5, sigma 2.0, inverse smoothed
-  density weights normalized to mean 1.
-- **Evaluation:** ordinary MAE and RMSE; LDS weights are used only in the
-  training objective.
+The validation result supports the intended role of LDS: neighboring labels
+share information, and rare low-temperature samples receive more influence
+during training. The improvement was not uniform. Validation MAE in the 5 to
+10 °C interval increased from 6.316 °C to 7.706 °C, showing that
+inverse-density weighting can trade performance between label regions.
 
-This repository implements LDS only. Feature Distribution Smoothing (FDS),
-the two-stage RRT procedure, and the official DIR training schedule are outside
-the present experiment.
+The chronological test split was substantially colder than the training and
+validation splits. Their mean temperatures were 5.89 °C, 11.36 °C, and
+13.25 °C, respectively. Both models overpredicted test temperatures, but the
+mean prediction bias was larger with LDS (+4.95 °C) than with the baseline
+(+3.82 °C).
 
-## Repository structure
+LDS therefore improved validation performance but did not generalize to the
+final test period. In this subset, temporal covariate shift and limited data
+coverage were more important than label frequency alone.
 
-```text
-.
-├── src/
-│   ├── prepare_data.py  # join images to weather labels and create splits
-│   ├── dataset.py       # PyTorch Dataset, transforms, and data loaders
-│   ├── model.py         # ResNet-18 temperature regressor
-│   ├── utils.py         # LDS kernel, weights, and weighted L1 loss
-│   ├── train.py         # baseline and LDS training
-│   └── evaluate.py      # metrics, constant baseline, bins, and plots
-├── tests/               # unit tests for the LDS utilities
-├── scripts/             # source used to build the concise report
-├── results/             # tracked aggregate outputs from the reported runs
-├── reports/             # concise PDF report
-├── datasets/            # local SkyFinder files; not committed
-├── data/                # generated manifest; not committed
-└── checkpoints/         # generated model weights; not committed
-```
+## Improvements
 
-## Setup
+- Tune LDS bin width, kernel size, sigma, and a maximum weight cap using only
+  the validation set. The current maximum sample weight is approximately 24.1.
+- Implement FDS and compare baseline, LDS, FDS, and LDS + FDS under the same
+  protocol.
+- Add more cameras and seasons while preserving leakage-safe temporal splits.
+- Run multiple random seeds and report uncertainty.
+- Examine time of day, weather metadata, camera identity, and prediction
+  calibration as possible sources of error.
+
+## Reproduce the experiment
 
 Python 3.10 or newer is recommended.
 
@@ -87,61 +129,44 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-The training script automatically chooses CUDA, Apple Silicon MPS, or CPU in
-that order.
+The training script automatically selects CUDA, Apple Silicon MPS, or CPU.
 
-## Prepare the data
+### Prepare SkyFinder
 
-The dataset is not included. Download the individual SkyFinder camera images
-and metadata from the [official SkyFinder dataset
-page](https://mvrl.cse.wustl.edu/datasets/skyfinder/), then arrange them as:
+The dataset is not redistributed in this repository. Download the images and
+metadata from the [official SkyFinder dataset
+page](https://mvrl.cse.wustl.edu/datasets/skyfinder/) and arrange them as:
 
 ```text
 datasets/
 ├── complete_table_with_mcr.csv
 └── images/
-    ├── 858/
-    │   └── *.jpg
-    ├── 3888/
-    │   └── *.jpg
-    └── 4795/
-        └── *.jpg
+    ├── 858/*.jpg
+    ├── 3888/*.jpg
+    └── 4795/*.jpg
 ```
 
-Generate the cleaned, chronological manifest:
+Generate the cleaned manifest and chronological splits:
 
 ```bash
 python src/prepare_data.py
 ```
 
-The manifest stores project-relative image paths, so it remains valid when the
-repository is moved as a unit. Two truncated JPEGs encountered in this subset
-are excluded explicitly during preparation.
-
-## Train
-
-Baseline:
+### Train
 
 ```bash
+# Standard ResNet-18 baseline
 python src/train.py
-```
 
-LDS-weighted model:
-
-```bash
+# ResNet-18 with LDS-weighted loss
 python src/train.py --lds
 ```
 
-Useful experiment controls include `--epochs`, `--batch-size`,
-`--learning-rate`, `--lds-bin-width`, `--lds-kernel-size`, `--lds-sigma`, and
-`--run-name`. Run `python src/train.py --help` for the complete interface.
+Run `python src/train.py --help` to view the LDS and training controls.
+Checkpoints are generated locally and are not committed because each is about
+128 MB.
 
-Checkpoints are intentionally not committed: each is about 128 MB and can be
-recreated with the commands above.
-
-## Evaluate
-
-Evaluate both checkpoints on validation and test splits:
+### Evaluate
 
 ```bash
 python src/evaluate.py --checkpoint best_resnet18.pt \
@@ -157,52 +182,38 @@ python src/evaluate.py --checkpoint best_resnet18_lds.pt \
   --output-prefix lds --model-label "ResNet-18 with LDS" --split test
 ```
 
-Each run writes overall metrics, per-image predictions, 5 °C temperature-bin
-statistics, a training-median comparison, and an analysis plot. Per-image
-prediction files remain untracked because they include local paths.
-
-## Tests
+### Test the LDS utilities
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-## Rebuild the report
+## Repository contents
 
-The report source is generated as an editable Word document:
-
-```bash
-python -m pip install -r requirements-report.txt
-python scripts/build_brief_report.py
+```text
+src/          data preparation, Dataset, model, training, and evaluation
+tests/        unit tests for the LDS kernel, weights, and weighted L1 loss
+results/      aggregate outputs from the reported baseline and LDS runs
+reports/      concise experiment report
+scripts/      report-generation source
+datasets/     local SkyFinder files; not tracked
+data/         generated manifest; not tracked
+checkpoints/  generated model weights; not tracked
 ```
 
-Export the generated DOCX to PDF with Microsoft Word or LibreOffice if the
-public PDF needs to be refreshed.
+## References and attribution
 
-## Limitations and next steps
+1. Yuzhe Yang, Kaiwen Zha, Ying-Cong Chen, Hao Wang, and Dina Katabi.
+   [Delving into Deep Imbalanced
+   Regression](https://proceedings.mlr.press/v139/yang21m.html). ICML, 2021.
+   [Official implementation](https://github.com/YyzHarry/imbalanced-regression).
+2. Radu Bogdan Mihail, Scott Workman, Zach Bessinger, and Nathan Jacobs. *Sky
+   Segmentation in the Wild: An Empirical Study*. WACV, 2016.
+   [Dataset page](https://mvrl.cse.wustl.edu/datasets/skyfinder/).
 
-- Tune LDS bin width, kernel size, sigma, and a maximum weight cap. The current
-  maximum training weight is about 24.1.
-- Add FDS and compare baseline, LDS, FDS, and LDS + FDS under the same protocol.
-- Add more cameras and seasons while preserving leakage-safe temporal splits.
-- Repeat experiments across seeds and report uncertainty.
-- Analyze time of day, weather conditions, and camera-specific bias.
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for implementation
+attribution. Original code in this repository is released under the
+[`MIT License`](LICENSE).
 
-## Attribution
-
-The LDS design is based on:
-
-> Yuzhe Yang, Kaiwen Zha, Ying-Cong Chen, Hao Wang, and Dina Katabi. “Delving
-> into Deep Imbalanced Regression.” ICML, 2021.
-
-- [Paper](https://proceedings.mlr.press/v139/yang21m.html)
-- [Official implementation](https://github.com/YyzHarry/imbalanced-regression)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-SkyFinder should be cited as:
-
-> Radu Bogdan Mihail, Scott Workman, Zach Bessinger, and Nathan Jacobs. “Sky
-> Segmentation in the Wild: An Empirical Study.” WACV, 2016.
-
-The dataset itself is not redistributed here. This repository's original code
-is released under the [MIT License](LICENSE).
+This is an independent implementation of a public take-home exercise. It is
+not an official UCLA or Health Intelligence Lab project.
