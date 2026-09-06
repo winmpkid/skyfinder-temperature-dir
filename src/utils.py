@@ -1,16 +1,22 @@
-# DIR 方法来源：Yang et al., Delving into Deep Imbalanced Regression, ICML 2021。
-# 官方仓库：https://github.com/YyzHarry/imbalanced-regression
-# 下列函数对应官方 imdb-wiki-dir 的 LDS 与加权 L1 实现，按本项目接口重新实现。
-# 当前只实现 LDS；未移植 fds.py 或特征均值、方差校准代码。
+# DIR method source: Yang et al., Delving into Deep Imbalanced Regression,
+# ICML 2021.
+# Official repository: https://github.com/YyzHarry/imbalanced-regression
+# The functions below correspond to the official imdb-wiki-dir LDS and weighted
+# L1 implementations, reimplemented for this project's interface.
+# Only LDS is implemented; fds.py and feature mean/variance calibration are not
+# ported.
 import numpy as np
 import torch
 
 def get_lds_kernel_window(kernel_size=5, sigma=2.0):
-    # DIR 对应：imdb-wiki-dir/utils.py::get_lds_kernel_window。
+    # DIR correspondence: imdb-wiki-dir/utils.py::get_lds_kernel_window.
     # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/utils.py
-    # 本项目改动：仅保留 Gaussian，增加参数校验，用 NumPy 直接计算离散高斯。
-    # 官方用 gaussian_filter1d 平滑脉冲并按峰值归一化；这里按核总和归一化。
-    # 官方滤波的边界处理也影响核形状，因此同样的 size/sigma 不保证数值等同。
+    # Project change: retain only the Gaussian kernel, add input validation, and
+    # calculate the discrete Gaussian directly with NumPy.
+    # The official code smooths an impulse with gaussian_filter1d and normalizes
+    # by the peak; this implementation normalizes by the kernel sum.
+    # Official boundary handling also affects kernel shape, so identical
+    # size/sigma values do not guarantee numerically identical kernels.
     if(
         not isinstance(kernel_size, int)
         or kernel_size % 2 == 0
@@ -36,10 +42,12 @@ def compute_lds_weights(
     kernel_size=5,
     sigma=2.0,
 ):
-    # DIR 对应：imdb-wiki-dir/datasets.py::IMDBWIKI._prepare_weights。
+    # DIR correspondence: imdb-wiki-dir/datasets.py::IMDBWIKI._prepare_weights.
     # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/datasets.py
-    # 沿用 LDS 流程：统计标签频数 -> 平滑密度 -> 取倒数 -> 样本权重均值归一化。
-    # 本项目改动：从 Dataset 拆出独立函数，将年龄桶改为支持负温度的可调宽度分箱。
+    # Follow the LDS workflow: count labels -> smooth density -> invert density
+    # -> normalize sample weights to mean 1.
+    # Project change: separate weighting from the Dataset and replace age buckets
+    # with adjustable-width bins that support negative temperatures.
     temperatures = np.asarray(temperatures, dtype=np.float64)
     if temperatures.ndim != 1 or temperatures.size == 0:
         raise ValueError(
@@ -58,13 +66,18 @@ def compute_lds_weights(
 
     kernel = get_lds_kernel_window(kernel_size = kernel_size, sigma = sigma)
 
-    # 本项目改动：官方年龄标签使用固定 0..120 桶及 int(label)；这里动态确定范围。
-    # 分箱起点向下对齐到 bin_width 的整数倍，负温度也可得到非负桶索引。
+    # Project change: official age labels use fixed 0..120 buckets and
+    # int(label); this implementation determines the range dynamically.
+    # Align the starting edge downward to a multiple of bin_width so negative
+    # temperatures still map to non-negative bin indices.
     bin_start = np.floor(temperatures.min() / bin_width) * bin_width
     bin_indices = np.floor((temperatures - bin_start) / bin_width).astype(np.int64)
     counts = np.bincount(bin_indices).astype(np.float64)
-    # 本项目实现：零填充 + np.convolve；对应官方 convolve1d(..., mode='constant')。
-    # 两者在相同对称核和频数下具有相同的平滑含义，但本项目核与计数预处理不同。
+    # Project implementation: zero padding plus np.convolve, corresponding to
+    # the official convolve1d(..., mode='constant').
+    # Both have the same smoothing interpretation for identical symmetric
+    # kernels and counts, but this project uses different kernel normalization
+    # and count preprocessing.
     half_size = kernel_size // 2
     padded_counts = np.pad(
         counts,
@@ -78,16 +91,21 @@ def compute_lds_weights(
         mode="valid",
     )
 
-    # DIR 思路：将平滑后的桶密度映射回样本，再取倒数，稀疏区间获得更大权重。
-    # 差异：官方 inverse 分支先把频数裁剪到 [5, 1000]，sqrt_inv 分支先开平方。
-    # 当前直接平滑原始频数，只加 1e-8 防除零；没有计数裁剪或样本权重上限。
+    # DIR idea: map the smoothed bin density back to each sample and invert it so
+    # sparse intervals receive larger weights.
+    # Difference: the official inverse branch clips counts to [5, 1000], while
+    # the sqrt_inv branch takes the square root first.
+    # This implementation smooths raw counts directly and adds only 1e-8 to
+    # prevent division by zero; it does not clip counts or cap sample weights.
     sample_density = smoothed_counts[bin_indices]
     weights = 1.0 / np.maximum(sample_density, 1e-8)
 
-    # 沿用官方按样本归一化的结果：除以均值等价于乘以 N / sum(weights)。
+    # Preserve the official per-sample normalization: dividing by the mean is
+    # equivalent to multiplying by N / sum(weights).
     weights = weights / weights.mean()
 
-    # 本项目新增：返回分箱与平滑信息，供日志、checkpoint 和实验分析使用。
+    # Project addition: return binning and smoothing details for logs,
+    # checkpoints, and experiment analysis.
     info = {
         "bin_start": float(bin_start),
         "bin_width": float(bin_width),
@@ -101,11 +119,15 @@ def compute_lds_weights(
 
 
 def weighted_l1_loss(predictions, targets, weights):
-    # DIR 对应：imdb-wiki-dir/loss.py::weighted_l1_loss。
+    # DIR correspondence: imdb-wiki-dir/loss.py::weighted_l1_loss.
     # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/loss.py
-    # 沿用数学形式 mean(weight * abs(prediction - target))，通过本项目接口重写。
-    # 本项目改动：统一要求 [batch_size]，增加形状校验和权重 device/dtype 对齐。
-    # 官方允许 weights=None 并用 expand_as 广播；这里要求显式权重以防意外广播。
+    # Preserve the mathematical form mean(weight * abs(prediction - target)),
+    # reimplemented for this project's interface.
+    # Project change: require [batch_size], validate shapes, and align weight
+    # device/dtype with the predictions.
+    # The official function accepts weights=None and broadcasts with expand_as;
+    # this implementation requires explicit weights to prevent unintended
+    # broadcasting.
     if predictions.ndim != 1 or predictions.numel() == 0:
         raise ValueError(
             "predictions must have shape [batch_size]."

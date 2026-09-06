@@ -1,6 +1,9 @@
-# 本项目模型：使用 torchvision 的 ImageNet 预训练 ResNet-18，添加温度回归头。
-# DIR 官方 imdb-wiki-dir/train.py 使用其 resnet.py 的 ResNet-50；这里未直接复制该模型。
-# 当前没有接入官方 FDS 模块；LDS 通过训练损失起作用，不改变本文件的前向传播。
+# Project model: an ImageNet-pretrained torchvision ResNet-18 with a
+# temperature-regression head.
+# The official DIR imdb-wiki-dir/train.py uses the ResNet-50 implementation in
+# its resnet.py; that model is not copied here.
+# The official FDS module is not integrated. LDS acts through the training loss
+# and does not change the forward pass in this file.
 import torch
 import torch.nn as nn
 
@@ -19,7 +22,9 @@ class TemperatureResNet(nn.Module):
         )
         self.backbone = resnet18(weights=weights)
         feature_dim = self.backbone.fc.in_features
-        # 本项目适配：移除分类层，保留特征，再用一个线性输出预测摄氏温度。
+        # Project adaptation: remove the classifier, retain the learned
+        # features, and predict temperature in degrees Celsius with one linear
+        # output.
         self.backbone.fc = nn.Identity()
         self.regression_head = nn.Linear(
             in_features=feature_dim,
@@ -30,7 +35,8 @@ class TemperatureResNet(nn.Module):
     def forward(self,images):
         features = self.backbone(images)
         temperatures = self.regression_head(features)
-        # 本项目接口：输出 [batch_size]，与温度标签及 LDS 权重形状一致。
+        # Project interface: return [batch_size] to match the temperature labels
+        # and LDS sample weights.
         temperatures = temperatures.squeeze(-1)
         return temperatures
 

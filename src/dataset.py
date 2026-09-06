@@ -1,7 +1,10 @@
-# DIR 对应：imdb-wiki-dir/datasets.py::IMDBWIKI 的样本权重准备与返回接口。
+# DIR correspondence: sample-weight preparation and return interface in
+# imdb-wiki-dir/datasets.py::IMDBWIKI.
 # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/datasets.py
-# 本项目适配：从 SkyFinder manifest 读取图片和温度，以 temperature 替代 age。
-# 权重算法在 utils.py 中重写；本文件负责训练集筛选及图片、标签、权重对齐。
+# Project adaptation: read images and temperatures from the SkyFinder manifest,
+# replacing age with temperature.
+# The weighting algorithm is reimplemented in utils.py. This file selects the
+# training split and keeps images, labels, and weights aligned.
 from pathlib import Path
 
 import pandas as pd
@@ -24,8 +27,10 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 def build_transforms(image_size=IMAGE_SIZE):
-    # 本项目改动：在 Dataset 外构建变换，使用 ImageNet 预训练模型的归一化参数。
-    # 官方 IMDBWIKI 使用均值/标准差 0.5 和训练随机裁剪；这里不做随机裁剪。
+    # Project change: build transforms outside the Dataset and use the
+    # normalization statistics expected by ImageNet-pretrained models.
+    # The official IMDBWIKI setup uses mean/std 0.5 and random training crops;
+    # this project does not use random crops.
     train_transform = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -103,8 +108,10 @@ class SkyFinderDataset(Dataset):
                     "LDS weights should only be enabled for the training split."
                 )
 
-            # 沿用官方训练数据加权的流程：只统计训练集，验证/测试不参与密度估计。
-            # 本项目改动：调用独立权重函数，缓存 tensor 和分析信息，保持行顺序一致。
+            # Follow the official training-weight workflow: estimate label
+            # density from the training split only, never validation or test.
+            # Project change: call a standalone weighting function and cache the
+            # tensor and diagnostic information in the original row order.
             temperatures = self.df["temperature"].to_numpy()
             weights, info = compute_lds_weights(
                 temperatures,
@@ -139,13 +146,17 @@ class SkyFinderDataset(Dataset):
         )
 
         if self.use_lds:
-            # DIR 对应：IMDBWIKI.__getitem__ 返回图片、标签和对应样本权重。
-            # 本项目改动：温度与权重为标量 tensor，组 batch 后为 [batch_size]。
+            # DIR correspondence: IMDBWIKI.__getitem__ returns an image, label,
+            # and the corresponding sample weight.
+            # Project change: temperature and weight are scalar tensors that
+            # become [batch_size] after collation.
             weight = self.weights[index]
             return image, temperature, weight
 
-        # 本项目接口：仅 LDS 训练返回三项；baseline、验证和测试仍返回两项。
-        # 官方 IMDBWIKI 在未加权时也返回第三项，值为 1。
+        # Project interface: only LDS training returns three items; baseline,
+        # validation, and test samples return two.
+        # Official IMDBWIKI also returns a third item with value 1 when weighting
+        # is disabled.
         return image, temperature
 
 
@@ -158,7 +169,8 @@ def create_dataloaders(
     lds_kernel_size=5,
     lds_sigma=2.0,
 ):
-    # 本项目封装：集中建立三个 DataLoader，只向 train_dataset 传入 LDS 参数。
+    # Project wrapper: construct all three DataLoaders here and pass LDS options
+    # only to the training Dataset.
     train_transform, eval_transform = build_transforms()
 
     train_dataset = SkyFinderDataset(
@@ -211,7 +223,8 @@ def create_dataloaders(
 
 
 def run_smoke_test():
-    # 本项目检查：读取每个 split 的一个 batch，确认图片和温度接口可用。
+    # Project check: read one batch from each split to verify the image and
+    # temperature interfaces.
     loaders = create_dataloaders(num_workers=0)
     split_names = ["train", "val", "test"]
 

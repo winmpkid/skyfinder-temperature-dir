@@ -1,6 +1,8 @@
-# 本项目新增的数据准备流程，不属于 DIR 官方代码。
-# 将 SkyFinder 图片与气象表匹配、清洗后按日期划分，生成 data/manifest.csv。
-# DIR 官方年龄实验读取已有 split 的 CSV；本项目在这里构建温度任务及时间划分。
+# Project-specific data preparation; this is not part of the official DIR code.
+# Match SkyFinder images to weather metadata, clean the records, split them by
+# date, and create data/manifest.csv.
+# The official DIR age experiment reads a CSV with predefined splits, whereas
+# this project constructs the temperature task and temporal splits here.
 
 from pathlib import Path
 
@@ -17,7 +19,8 @@ OUTPUT_PATH = PROJECT_DIR / "data" / "manifest.csv"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 MISSING_TEMPERATURE_VALUES = {-9999.0, -999.0, 999.0, 9999.0}
 
-# 本项目数据修复：排除训练中发现的两个损坏 JPEG，避免 truncated image 错误。
+# Project data fix: exclude two corrupted JPEG files discovered during training
+# to avoid truncated-image errors.
 CORRUPTED_FILENAMES = {
     "20130617_101231.jpg",
     "20131225_171222.jpg",
@@ -25,7 +28,8 @@ CORRUPTED_FILENAMES = {
 
 
 def find_images(images_dir: Path) -> pd.DataFrame:
-    # 本项目新增：扫描下载的图片，用 camera_id 和 filename 确定样本身份。
+    # Project addition: scan downloaded images and identify each sample by
+    # camera_id and filename.
     if not images_dir.exists():
         raise FileNotFoundError(f"Image directory does not exist: {images_dir}")
 
@@ -36,7 +40,7 @@ def find_images(images_dir: Path) -> pd.DataFrame:
         if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
 
-        # SkyFinder 本地目录约定：images/<CamId>/<Filename>。
+        # Expected local SkyFinder layout: images/<CamId>/<Filename>.
         camera_id = image_path.parent.name.strip()
         if not camera_id.isdigit():
             continue
@@ -72,7 +76,8 @@ def find_images(images_dir: Path) -> pd.DataFrame:
 
 
 def load_metadata(metadata_path: Path) -> pd.DataFrame:
-    # 本项目新增：读取气象表 TempM 作为摄氏温度标签，过滤无效标签和时间戳。
+    # Project addition: use TempM from the weather table as the Celsius target
+    # and filter invalid targets and timestamps.
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata CSV does not exist: {metadata_path}")
 
@@ -154,7 +159,8 @@ def assign_temporal_split(
     train_ratio: float = 0.70,
     val_ratio: float = 0.15,
 ) -> pd.DataFrame:
-    # 本项目划分方案：每个摄像头按日期先后分 train/val/test，同一天不跨 split。
+    # Project split: order dates within each camera and assign train/val/test;
+    # samples from the same date never cross split boundaries.
     camera_df = camera_df.sort_values("timestamp").copy()
     camera_df["capture_date"] = camera_df["timestamp"].dt.strftime("%Y-%m-%d")
 
@@ -170,7 +176,8 @@ def assign_temporal_split(
     number_train = max(1, int(number_of_dates * train_ratio))
     number_val = max(1, int(number_of_dates * val_ratio))
 
-    # 本项目边界处理：日期较少时仍为验证集和测试集各保留至少一天。
+    # Project edge-case handling: reserve at least one date for validation and
+    # one for testing when a camera contains few dates.
     if number_train + number_val >= number_of_dates:
         number_train = number_of_dates - 2
         number_val = 1
@@ -193,7 +200,8 @@ def assign_temporal_split(
 
 
 def create_manifest() -> tuple[pd.DataFrame, pd.DataFrame]:
-    # 本项目新增：匹配图片与标签、排除损坏文件，再应用时间划分。
+    # Project addition: match images to labels, remove corrupted files, and then
+    # apply the temporal split.
     print(f"Project directory: {PROJECT_DIR}")
     print("\nFinding downloaded images...")
     image_df = find_images(IMAGES_DIR)
@@ -254,7 +262,8 @@ def create_manifest() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def print_summary(manifest: pd.DataFrame) -> None:
-    # 本项目检查：输出各摄像头及 split 的数量、温度范围，辅助发现分布差异。
+    # Project check: report counts and temperature ranges by camera and split to
+    # make distribution differences visible.
     print("\nCounts by camera and split:")
     print(
         manifest.groupby(["camera_id", "split"])

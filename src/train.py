@@ -1,7 +1,10 @@
-# DIR 对应：imdb-wiki-dir/train.py 的加权训练、未加权验证与最佳模型选择流程。
+# DIR correspondence: weighted training, unweighted validation, and best-model
+# selection in imdb-wiki-dir/train.py.
 # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/train.py
-# 本项目训练脚本按 SkyFinder 任务重写，LDS 损失来源与差异见 utils.py。
-# 未移植官方 FDS 统计更新、RRT 两阶段训练或学习率衰减流程。
+# This training script is rewritten for SkyFinder; see utils.py for the LDS loss
+# source and implementation differences.
+# Official FDS statistics updates, two-stage RRT training, and learning-rate
+# scheduling are not ported.
 import argparse
 import csv
 import random
@@ -62,8 +65,10 @@ def get_device():
 
 
 def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
-    # DIR 对应：train() 将 Dataset 返回的样本权重传入 weighted_l1_loss。
-    # 本项目改动：兼容 baseline 两项 batch 和 LDS 三项 batch，分开记录 loss 与 MAE。
+    # DIR correspondence: train() passes Dataset sample weights to
+    # weighted_l1_loss.
+    # Project change: support two-item baseline batches and three-item LDS
+    # batches, while tracking optimization loss and ordinary MAE separately.
     model.train()
     total_loss = 0.0
     total_absolute_error = 0.0
@@ -81,7 +86,8 @@ def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
 
         optimizer.zero_grad(set_to_none=True)
         predictions = model(images)
-        # LDS 沿用官方的逐样本损失加权思路；普通 MAE 另算，用于直接比较两种训练。
+        # LDS follows the official per-sample loss-weighting idea. Calculate
+        # ordinary MAE separately so both training modes remain comparable.
         mae = criterion(predictions, temperatures)
         loss = (
             weighted_l1_loss(predictions, temperatures, weights)
@@ -108,7 +114,8 @@ def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
 
 
 def validate_one_epoch(model,data_loader,criterion,device):
-    # 沿用官方 validate() 的未加权 L1 评估；验证误差不乘训练样本权重。
+    # Follow the official validate() approach: use unweighted L1 evaluation and
+    # never multiply validation errors by training sample weights.
     model.eval()
     total_absolute_error = 0.0
     total_samples = 0
@@ -132,7 +139,8 @@ def validate_one_epoch(model,data_loader,criterion,device):
 
 
 def save_checkpoint(path, model, optimizer, epoch, val_mae, run_config=None):
-    # 本项目保存格式：额外记录 run_config，便于核对 LDS 是否启用及实验参数。
+    # Project checkpoint format: also store run_config so LDS status and
+    # experiment parameters can be audited.
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -147,7 +155,8 @@ def save_checkpoint(path, model, optimizer, epoch, val_mae, run_config=None):
 
 
 def save_history(path, history):
-    # 本项目新增：逐轮 CSV，同时保存加权训练 loss、普通训练 MAE 和验证 MAE。
+    # Project addition: save a per-epoch CSV containing weighted training loss,
+    # ordinary training MAE, and validation MAE.
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", newline="", encoding="utf-8") as csv_file:
@@ -172,7 +181,8 @@ def train_model(
         )
         train_loss = train_metrics["loss"]
         train_mae = train_metrics["mae"]
-        # 与官方 L1 实验的选择标准一致：按未加权验证 MAE 保存最佳模型。
+        # Match the official L1 experiment's selection rule: save the model with
+        # the best unweighted validation MAE.
         val_mae = validate_one_epoch(model,val_loader,criterion,device)
 
         epoch_metrics = {
@@ -222,8 +232,10 @@ def parse_args():
         action="store_true",
         help="Use training-only LDS weights and weighted L1 loss.",
     )
-    # 本项目新增温度分箱宽度；kernel-size/sigma 对应官方 lds_ks/lds_sigma 的作用。
-    # 当前默认值属于本项目实验设置，不代表复现了官方全部超参数。
+    # Project addition: expose temperature-bin width. kernel-size and sigma
+    # correspond to the roles of official lds_ks and lds_sigma.
+    # These defaults belong to this experiment and do not reproduce every
+    # official hyperparameter.
     parser.add_argument("--lds-bin-width", type=float, default=1.0)
     parser.add_argument("--lds-kernel-size", type=int, default=5)
     parser.add_argument("--lds-sigma", type=float, default=2.0)
@@ -266,7 +278,8 @@ def main():
     )
     model = build_model(pretrained=not args.no_pretrained).to(device)
     criterion = nn.L1Loss()
-    # 本项目选择 AdamW；官方 imdb-wiki-dir/train.py 提供 Adam 或 SGD。
+    # Project choice: use AdamW; official imdb-wiki-dir/train.py offers Adam or
+    # SGD.
     optimizer = AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -274,7 +287,8 @@ def main():
     )
 
     num_epochs = args.epochs
-    # 本项目改动：baseline/LDS 使用独立文件名，--run-name 用于保留不同实验。
+    # Project change: use separate baseline/LDS filenames and allow --run-name
+    # to preserve multiple experiments.
     run_name = args.run_name if args.run_name is not None else (
         "lds" if args.lds else ""
     )

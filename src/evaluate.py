@@ -1,8 +1,12 @@
-# 本项目新增评估脚本：读取 baseline/LDS checkpoint，统一评估验证集或测试集。
-# 官方 DIR 的 imdb-wiki-dir/train.py::validate 报告整体及 many/median/few-shot 指标。
+# Project evaluation script: load baseline/LDS checkpoints and evaluate either
+# the validation or test split through the same pipeline.
+# Official DIR imdb-wiki-dir/train.py::validate reports overall and
+# many/median/few-shot metrics.
 # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/train.py
-# 这里使用 MAE、RMSE、5°C 分箱与训练中位数常数基线；没有复制官方 shot_metrics。
-# 因而这里的温度分箱表不等同于论文的 many/median/few-shot 评估。
+# This project uses MAE, RMSE, 5-degree-Celsius bins, and a training-median
+# constant baseline; it does not copy the official shot_metrics implementation.
+# Therefore, these temperature-bin tables are not equivalent to the paper's
+# many/median/few-shot evaluation.
 
 import argparse
 from pathlib import Path
@@ -27,7 +31,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_trained_model(checkpoint_path, device):
-    # 本项目接口：按 model.py 创建 ResNet-18，加载本项目 checkpoint 字段。
+    # Project interface: create the ResNet-18 defined in model.py and load the
+    # fields stored by this project's checkpoint format.
     checkpoint_path = Path(checkpoint_path)
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"Checkpoint was not found: {checkpoint_path}")
@@ -45,7 +50,8 @@ def load_trained_model(checkpoint_path, device):
 
 
 def collect_predictions(model, data_loader, device):
-    # 通用 PyTorch 推理流程：eval + no_grad；LDS 评估时不需要样本权重。
+    # Standard PyTorch inference: eval + no_grad. LDS sample weights are not
+    # used during evaluation.
     model.eval()
     all_predictions = []
     all_targets = []
@@ -61,7 +67,8 @@ def collect_predictions(model, data_loader, device):
                     f"target shape {temperatures.shape}."
                 )
 
-            # 每个 batch 都转回 CPU，避免在 GPU 上积累预测结果。
+            # Move each batch result to CPU to avoid accumulating predictions on
+            # the accelerator.
             all_predictions.append(predictions.cpu())
             all_targets.append(temperatures.cpu())
 
@@ -74,7 +81,8 @@ def collect_predictions(model, data_loader, device):
 
 
 def calculate_metrics(predictions, targets):
-    # 本项目指标实现：对全部样本计算普通 MAE、RMSE，不使用 LDS 加权误差。
+    # Project metrics: calculate ordinary MAE and RMSE over all samples without
+    # LDS weighting.
     predictions = np.asarray(predictions, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
 
@@ -92,8 +100,10 @@ def calculate_metrics(predictions, targets):
     }
 
 def summarize_temperature_bins(train_data,results,split_name,bin_width=5):
-    # 本项目分析：按训练温度确定分箱边界，比较训练频数与各区间预测误差。
-    # 此处默认 5°C 是展示粒度，与 LDS 训练权重默认使用的 1°C 分箱不同。
+    # Project analysis: derive bin edges from training temperatures and compare
+    # training frequency with prediction error in each interval.
+    # The default 5-degree-Celsius width is for presentation and differs from
+    # the 1-degree-Celsius bins used by default for LDS training weights.
     if bin_width <= 0:
         raise ValueError("bin_width must be greater than 0.")
 
@@ -149,7 +159,8 @@ def summarize_temperature_bins(train_data,results,split_name,bin_width=5):
 def compare_with_constant_baseline(
     train_data,predictions,targets,split_name,model_label="ResNet-18",
 ):
-    # 本项目新增对照：始终预测训练温度中位数，不用验证或测试标签拟合常数。
+    # Project baseline: always predict the training-temperature median; never
+    # fit the constant using validation or test labels.
     constant_temperature = train_data["temperature"].median()
 
     constant_predictions = np.full(

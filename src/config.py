@@ -1,4 +1,5 @@
-# 本项目 SkyFinder baseline/LDS 的公共实验设置，不是 DIR 官方完整训练配置。
+# Shared settings for the SkyFinder baseline/LDS experiments; this is not the
+# complete official DIR training configuration.
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
 NUM_EPOCHS = 20
