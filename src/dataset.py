@@ -27,10 +27,8 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 
 
 def build_transforms(image_size=IMAGE_SIZE):
-    # Project change: build transforms outside the Dataset and use the
-    # normalization statistics expected by ImageNet-pretrained models.
-    # The official IMDBWIKI setup uses mean/std 0.5 and random training crops;
-    # this project does not use random crops.
+    # Build transforms outside the Dataset using the normalization parameters for ImageNet-pretrained models.
+    # The official IMDBWIKI pipeline uses mean/std 0.5 and random training crops; no random cropping is used here.
     train_transform = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -108,10 +106,8 @@ class SkyFinderDataset(Dataset):
                     "LDS weights should only be enabled for the training split."
                 )
 
-            # Follow the official training-weight workflow: estimate label
-            # density from the training split only, never validation or test.
-            # Project change: call a standalone weighting function and cache the
-            # tensor and diagnostic information in the original row order.
+            # Follow the official weighting workflow: estimate densities from training data only, excluding validation and test data.
+            # Call a separate weight function and cache the tensor and analysis information while preserving row order.
             temperatures = self.df["temperature"].to_numpy()
             weights, info = compute_lds_weights(
                 temperatures,
@@ -146,17 +142,13 @@ class SkyFinderDataset(Dataset):
         )
 
         if self.use_lds:
-            # DIR correspondence: IMDBWIKI.__getitem__ returns an image, label,
-            # and the corresponding sample weight.
-            # Project change: temperature and weight are scalar tensors that
-            # become [batch_size] after collation.
+            # DIR counterpart: IMDBWIKI.__getitem__ returns an image, its label, and the corresponding sample weight.
+            # Temperatures and weights are scalar tensors, giving shape [batch_size] after batching.
             weight = self.weights[index]
             return image, temperature, weight
 
-        # Project interface: only LDS training returns three items; baseline,
-        # validation, and test samples return two.
-        # Official IMDBWIKI also returns a third item with value 1 when weighting
-        # is disabled.
+        # Only LDS training returns three items; baseline training, validation, and testing return two.
+        # The official IMDBWIKI implementation returns a third item even without weighting, with a value of 1.
         return image, temperature
 
 
@@ -169,8 +161,7 @@ def create_dataloaders(
     lds_kernel_size=5,
     lds_sigma=2.0,
 ):
-    # Project wrapper: construct all three DataLoaders here and pass LDS options
-    # only to the training Dataset.
+    # Create all three DataLoaders here, passing LDS parameters only to train_dataset.
     train_transform, eval_transform = build_transforms()
 
     train_dataset = SkyFinderDataset(
@@ -223,8 +214,7 @@ def create_dataloaders(
 
 
 def run_smoke_test():
-    # Project check: read one batch from each split to verify the image and
-    # temperature interfaces.
+    # Read one batch from each split to check the image and temperature interfaces.
     loaders = create_dataloaders(num_workers=0)
     split_names = ["train", "val", "test"]
 

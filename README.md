@@ -6,8 +6,8 @@ temperature prediction.
 
 > **Main finding:** LDS reduced validation MAE from **2.677 °C to 2.610 °C**, but
 > test MAE increased from **4.922 °C to 6.315 °C**. Label imbalance mattered in
-> some temperature ranges, while temporal distribution shift was the larger
-> generalization problem in this subset.
+> some temperature ranges, but the cause of the worse test performance needs
+> further controlled experiments.
 
 The concise two-page report is available at
 [`reports/SkyFinder_DIR_Brief_Report.pdf`](reports/SkyFinder_DIR_Brief_Report.pdf).
@@ -82,7 +82,20 @@ On validation data, LDS improved MAE by **0.066 °C (2.5%)** and RMSE by
 - −10 to −5 °C: MAE decreased from 4.175 °C to 3.558 °C
 - −5 to 0 °C: MAE decreased from 3.409 °C to 2.432 °C
 
-![Baseline test temperature analysis](results/baseline_test_temperature_analysis.png)
+### Baseline and LDS plots
+
+Each plot shows training sample counts above and unweighted MAE by temperature
+interval below. Compare models within the same evaluation split. The error axes
+have different scales, so compare numeric values rather than visual heights.
+
+| Evaluation split | Baseline (without LDS) | With LDS |
+|---|---|---|
+| Validation | ![Baseline validation errors](results/baseline_val_temperature_analysis.png) | ![LDS validation errors](results/lds_val_temperature_analysis.png) |
+| Test | ![Baseline test errors](results/baseline_test_temperature_analysis.png) | ![LDS test errors](results/lds_test_temperature_analysis.png) |
+
+Overall MAE weights each interval by its evaluation sample count; it is not the
+simple average of the plotted interval errors. Intervals without evaluation
+samples have no error point.
 
 Aggregate metrics, temperature-bin tables, training histories, and analysis
 plots are stored in [`results/`](results/).
@@ -101,9 +114,12 @@ validation splits. Their mean temperatures were 5.89 °C, 11.36 °C, and
 mean prediction bias was larger with LDS (+4.95 °C) than with the baseline
 (+3.82 °C).
 
-LDS therefore improved validation performance but did not generalize to the
-final test period. In this subset, temporal covariate shift and limited data
-coverage were more important than label frequency alone.
+LDS slightly improved validation performance in this run but increased error
+on the final test period. The colder test temperatures establish a label
+distribution difference, but these results alone do not isolate its causal
+role. Additional seeds and controlled weighting experiments are needed to
+distinguish temporal distribution effects, weighting effects, and training
+variability.
 
 ## Improvements
 

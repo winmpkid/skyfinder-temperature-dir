@@ -65,10 +65,8 @@ def get_device():
 
 
 def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
-    # DIR correspondence: train() passes Dataset sample weights to
-    # weighted_l1_loss.
-    # Project change: support two-item baseline batches and three-item LDS
-    # batches, while tracking optimization loss and ordinary MAE separately.
+    # DIR counterpart: train() passes sample weights from the Dataset to weighted_l1_loss.
+    # Support two-item baseline batches and three-item LDS batches, recording loss and MAE separately.
     model.train()
     total_loss = 0.0
     total_absolute_error = 0.0
@@ -86,8 +84,7 @@ def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
 
         optimizer.zero_grad(set_to_none=True)
         predictions = model(images)
-        # LDS follows the official per-sample loss-weighting idea. Calculate
-        # ordinary MAE separately so both training modes remain comparable.
+        # Follow the official per-sample loss weighting approach; compute ordinary MAE separately for comparison.
         mae = criterion(predictions, temperatures)
         loss = (
             weighted_l1_loss(predictions, temperatures, weights)
@@ -114,8 +111,7 @@ def train_one_epoch(model,data_loader,criterion,optimizer,device,use_lds=False):
 
 
 def validate_one_epoch(model,data_loader,criterion,device):
-    # Follow the official validate() approach: use unweighted L1 evaluation and
-    # never multiply validation errors by training sample weights.
+    # Follow the official validate() approach: use unweighted L1 error, without training sample weights.
     model.eval()
     total_absolute_error = 0.0
     total_samples = 0
@@ -139,8 +135,7 @@ def validate_one_epoch(model,data_loader,criterion,device):
 
 
 def save_checkpoint(path, model, optimizer, epoch, val_mae, run_config=None):
-    # Project checkpoint format: also store run_config so LDS status and
-    # experiment parameters can be audited.
+    # Also save run_config to record whether LDS is enabled and which experiment parameters were used.
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -155,8 +150,7 @@ def save_checkpoint(path, model, optimizer, epoch, val_mae, run_config=None):
 
 
 def save_history(path, history):
-    # Project addition: save a per-epoch CSV containing weighted training loss,
-    # ordinary training MAE, and validation MAE.
+    # Save an epoch-by-epoch CSV with weighted training loss, ordinary training MAE, and validation MAE.
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", newline="", encoding="utf-8") as csv_file:
@@ -181,8 +175,7 @@ def train_model(
         )
         train_loss = train_metrics["loss"]
         train_mae = train_metrics["mae"]
-        # Match the official L1 experiment's selection rule: save the model with
-        # the best unweighted validation MAE.
+        # As in the official L1 experiment, select the best model by unweighted validation MAE.
         val_mae = validate_one_epoch(model,val_loader,criterion,device)
 
         epoch_metrics = {
@@ -232,10 +225,8 @@ def parse_args():
         action="store_true",
         help="Use training-only LDS weights and weighted L1 loss.",
     )
-    # Project addition: expose temperature-bin width. kernel-size and sigma
-    # correspond to the roles of official lds_ks and lds_sigma.
-    # These defaults belong to this experiment and do not reproduce every
-    # official hyperparameter.
+    # Add a temperature bin width; kernel-size and sigma serve the roles of the official lds_ks and lds_sigma.
+    # These defaults belong to this experiment and do not reproduce all official hyperparameters.
     parser.add_argument("--lds-bin-width", type=float, default=1.0)
     parser.add_argument("--lds-kernel-size", type=int, default=5)
     parser.add_argument("--lds-sigma", type=float, default=2.0)
@@ -278,8 +269,7 @@ def main():
     )
     model = build_model(pretrained=not args.no_pretrained).to(device)
     criterion = nn.L1Loss()
-    # Project choice: use AdamW; official imdb-wiki-dir/train.py offers Adam or
-    # SGD.
+    # Use AdamW here; the official imdb-wiki-dir/train.py offers Adam or SGD.
     optimizer = AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -287,8 +277,7 @@ def main():
     )
 
     num_epochs = args.epochs
-    # Project change: use separate baseline/LDS filenames and allow --run-name
-    # to preserve multiple experiments.
+    # Use separate baseline and LDS filenames; --run-name preserves outputs from different experiments.
     run_name = args.run_name if args.run_name is not None else (
         "lds" if args.lds else ""
     )

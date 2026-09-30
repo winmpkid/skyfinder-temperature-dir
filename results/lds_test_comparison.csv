@@ -1,0 +1,3 @@
+model,test_mae,test_rmse
+Training-median baseline,5.945316461973553,7.802648044002456
+ResNet-18 + LDS,6.314895227671707,7.550527716956222

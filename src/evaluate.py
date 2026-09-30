@@ -31,8 +31,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
 def load_trained_model(checkpoint_path, device):
-    # Project interface: create the ResNet-18 defined in model.py and load the
-    # fields stored by this project's checkpoint format.
+    # Build the ResNet-18 defined in model.py and load this project's checkpoint fields.
     checkpoint_path = Path(checkpoint_path)
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"Checkpoint was not found: {checkpoint_path}")
@@ -50,8 +49,7 @@ def load_trained_model(checkpoint_path, device):
 
 
 def collect_predictions(model, data_loader, device):
-    # Standard PyTorch inference: eval + no_grad. LDS sample weights are not
-    # used during evaluation.
+    # Use standard PyTorch inference with eval() and no_grad(); LDS evaluation needs no sample weights.
     model.eval()
     all_predictions = []
     all_targets = []
@@ -67,8 +65,7 @@ def collect_predictions(model, data_loader, device):
                     f"target shape {temperatures.shape}."
                 )
 
-            # Move each batch result to CPU to avoid accumulating predictions on
-            # the accelerator.
+            # Move each batch to the CPU to avoid accumulating predictions in GPU memory.
             all_predictions.append(predictions.cpu())
             all_targets.append(temperatures.cpu())
 
@@ -81,8 +78,7 @@ def collect_predictions(model, data_loader, device):
 
 
 def calculate_metrics(predictions, targets):
-    # Project metrics: calculate ordinary MAE and RMSE over all samples without
-    # LDS weighting.
+    # Compute ordinary MAE and RMSE over all samples, without LDS weighting.
     predictions = np.asarray(predictions, dtype=np.float64)
     targets = np.asarray(targets, dtype=np.float64)
 
@@ -100,10 +96,8 @@ def calculate_metrics(predictions, targets):
     }
 
 def summarize_temperature_bins(train_data,results,split_name,bin_width=5):
-    # Project analysis: derive bin edges from training temperatures and compare
-    # training frequency with prediction error in each interval.
-    # The default 5-degree-Celsius width is for presentation and differs from
-    # the 1-degree-Celsius bins used by default for LDS training weights.
+    # Define bins from training temperatures and compare training counts with prediction errors in each bin.
+    # The default 5-degree bins are for display; LDS training weights use 1-degree bins by default.
     if bin_width <= 0:
         raise ValueError("bin_width must be greater than 0.")
 
@@ -159,8 +153,7 @@ def summarize_temperature_bins(train_data,results,split_name,bin_width=5):
 def compare_with_constant_baseline(
     train_data,predictions,targets,split_name,model_label="ResNet-18",
 ):
-    # Project baseline: always predict the training-temperature median; never
-    # fit the constant using validation or test labels.
+    # Additional baseline: always predict the training median, without fitting to validation or test labels.
     constant_temperature = train_data["temperature"].median()
 
     constant_predictions = np.full(

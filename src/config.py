@@ -1,5 +1,4 @@
-# Shared settings for the SkyFinder baseline/LDS experiments; this is not the
-# complete official DIR training configuration.
+# Shared settings for the SkyFinder baseline and LDS experiments, not the full official DIR configuration.
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
 NUM_EPOCHS = 20

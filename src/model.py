@@ -22,9 +22,7 @@ class TemperatureResNet(nn.Module):
         )
         self.backbone = resnet18(weights=weights)
         feature_dim = self.backbone.fc.in_features
-        # Project adaptation: remove the classifier, retain the learned
-        # features, and predict temperature in degrees Celsius with one linear
-        # output.
+        # Project adaptation: replace the classifier with a linear head that predicts temperature in degrees Celsius.
         self.backbone.fc = nn.Identity()
         self.regression_head = nn.Linear(
             in_features=feature_dim,
@@ -35,8 +33,7 @@ class TemperatureResNet(nn.Module):
     def forward(self,images):
         features = self.backbone(images)
         temperatures = self.regression_head(features)
-        # Project interface: return [batch_size] to match the temperature labels
-        # and LDS sample weights.
+        # Return shape [batch_size] to match the temperature labels and LDS weights.
         temperatures = temperatures.squeeze(-1)
         return temperatures
 

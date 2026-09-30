@@ -66,18 +66,13 @@ def compute_lds_weights(
 
     kernel = get_lds_kernel_window(kernel_size = kernel_size, sigma = sigma)
 
-    # Project change: official age labels use fixed 0..120 buckets and
-    # int(label); this implementation determines the range dynamically.
-    # Align the starting edge downward to a multiple of bin_width so negative
-    # temperatures still map to non-negative bin indices.
+    # Determine the range dynamically; the official age-label implementation uses fixed 0..120 bins and int(label).
+    # Round the bin origin down to a multiple of bin_width so negative temperatures also have nonnegative bin indices.
     bin_start = np.floor(temperatures.min() / bin_width) * bin_width
     bin_indices = np.floor((temperatures - bin_start) / bin_width).astype(np.int64)
     counts = np.bincount(bin_indices).astype(np.float64)
-    # Project implementation: zero padding plus np.convolve, corresponding to
-    # the official convolve1d(..., mode='constant').
-    # Both have the same smoothing interpretation for identical symmetric
-    # kernels and counts, but this project uses different kernel normalization
-    # and count preprocessing.
+    # Use zero padding and np.convolve, corresponding to the official convolve1d(..., mode='constant').
+    # Both smooth identically with the same symmetric kernel and counts, but this project uses different kernel and count preprocessing.
     half_size = kernel_size // 2
     padded_counts = np.pad(
         counts,
@@ -91,21 +86,16 @@ def compute_lds_weights(
         mode="valid",
     )
 
-    # DIR idea: map the smoothed bin density back to each sample and invert it so
-    # sparse intervals receive larger weights.
-    # Difference: the official inverse branch clips counts to [5, 1000], while
-    # the sqrt_inv branch takes the square root first.
-    # This implementation smooths raw counts directly and adds only 1e-8 to
-    # prevent division by zero; it does not clip counts or cap sample weights.
+    # DIR approach: map smoothed bin densities to samples and invert them, giving sparse regions larger weights.
+    # Difference: the official inverse branch first clips counts to [5, 1000]; sqrt_inv first takes their square root.
+    # Here, smooth raw counts and use only a 1e-8 floor to avoid division by zero, without count clipping or a weight cap.
     sample_density = smoothed_counts[bin_indices]
     weights = 1.0 / np.maximum(sample_density, 1e-8)
 
-    # Preserve the official per-sample normalization: dividing by the mean is
-    # equivalent to multiplying by N / sum(weights).
+    # Match the official sample-wise normalization: dividing by the mean is equivalent to multiplying by N / sum(weights).
     weights = weights / weights.mean()
 
-    # Project addition: return binning and smoothing details for logs,
-    # checkpoints, and experiment analysis.
+    # Also return binning and smoothing information for logs, checkpoints, and experiment analysis.
     info = {
         "bin_start": float(bin_start),
         "bin_width": float(bin_width),
@@ -119,15 +109,7 @@ def compute_lds_weights(
 
 
 def weighted_l1_loss(predictions, targets, weights):
-    # DIR correspondence: imdb-wiki-dir/loss.py::weighted_l1_loss.
-    # https://github.com/YyzHarry/imbalanced-regression/blob/main/imdb-wiki-dir/loss.py
-    # Preserve the mathematical form mean(weight * abs(prediction - target)),
-    # reimplemented for this project's interface.
-    # Project change: require [batch_size], validate shapes, and align weight
-    # device/dtype with the predictions.
-    # The official function accepts weights=None and broadcasts with expand_as;
-    # this implementation requires explicit weights to prevent unintended
-    # broadcasting.
+    # Compute the weighted L1 loss.
     if predictions.ndim != 1 or predictions.numel() == 0:
         raise ValueError(
             "predictions must have shape [batch_size]."

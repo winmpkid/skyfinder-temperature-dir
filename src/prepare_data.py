@@ -19,8 +19,7 @@ OUTPUT_PATH = PROJECT_DIR / "data" / "manifest.csv"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 MISSING_TEMPERATURE_VALUES = {-9999.0, -999.0, 999.0, 9999.0}
 
-# Project data fix: exclude two corrupted JPEG files discovered during training
-# to avoid truncated-image errors.
+# Exclude two corrupted JPEGs found during training to prevent truncated-image errors.
 CORRUPTED_FILENAMES = {
     "20130617_101231.jpg",
     "20131225_171222.jpg",
@@ -28,8 +27,7 @@ CORRUPTED_FILENAMES = {
 
 
 def find_images(images_dir: Path) -> pd.DataFrame:
-    # Project addition: scan downloaded images and identify each sample by
-    # camera_id and filename.
+    # Scan downloaded images and identify samples by camera_id and filename.
     if not images_dir.exists():
         raise FileNotFoundError(f"Image directory does not exist: {images_dir}")
 
@@ -40,7 +38,7 @@ def find_images(images_dir: Path) -> pd.DataFrame:
         if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
 
-        # Expected local SkyFinder layout: images/<CamId>/<Filename>.
+        # Local SkyFinder directory layout: images/<CamId>/<Filename>.
         camera_id = image_path.parent.name.strip()
         if not camera_id.isdigit():
             continue
@@ -76,8 +74,7 @@ def find_images(images_dir: Path) -> pd.DataFrame:
 
 
 def load_metadata(metadata_path: Path) -> pd.DataFrame:
-    # Project addition: use TempM from the weather table as the Celsius target
-    # and filter invalid targets and timestamps.
+    # Read TempM from the weather metadata as the Celsius label, filtering invalid labels and timestamps.
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata CSV does not exist: {metadata_path}")
 
@@ -159,8 +156,7 @@ def assign_temporal_split(
     train_ratio: float = 0.70,
     val_ratio: float = 0.15,
 ) -> pd.DataFrame:
-    # Project split: order dates within each camera and assign train/val/test;
-    # samples from the same date never cross split boundaries.
+    # Split each camera chronologically into train/val/test, keeping each date within a single split for that camera.
     camera_df = camera_df.sort_values("timestamp").copy()
     camera_df["capture_date"] = camera_df["timestamp"].dt.strftime("%Y-%m-%d")
 
@@ -176,8 +172,7 @@ def assign_temporal_split(
     number_train = max(1, int(number_of_dates * train_ratio))
     number_val = max(1, int(number_of_dates * val_ratio))
 
-    # Project edge-case handling: reserve at least one date for validation and
-    # one for testing when a camera contains few dates.
+    # With few dates, still reserve at least one day each for validation and testing.
     if number_train + number_val >= number_of_dates:
         number_train = number_of_dates - 2
         number_val = 1
@@ -200,8 +195,7 @@ def assign_temporal_split(
 
 
 def create_manifest() -> tuple[pd.DataFrame, pd.DataFrame]:
-    # Project addition: match images to labels, remove corrupted files, and then
-    # apply the temporal split.
+    # Match images to labels, remove corrupted files, and apply the temporal split.
     print(f"Project directory: {PROJECT_DIR}")
     print("\nFinding downloaded images...")
     image_df = find_images(IMAGES_DIR)
@@ -262,8 +256,7 @@ def create_manifest() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def print_summary(manifest: pd.DataFrame) -> None:
-    # Project check: report counts and temperature ranges by camera and split to
-    # make distribution differences visible.
+    # Print counts by camera and split, plus temperature summaries, to help identify distribution differences.
     print("\nCounts by camera and split:")
     print(
         manifest.groupby(["camera_id", "split"])
